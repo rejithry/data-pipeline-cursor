@@ -1,0 +1,35 @@
+I wanted to build a docker compose file to have set of docker containers for a data pipeline.  Below are the containers i needed. These containers need to communicate to each other.
+
+# list of containers
+minio (Storage)
+metastore (Metatstore to store the iceberg table)
+postgres (to support metastore)
+kafka
+kafka-connect (Machine where the kafka-connect process runs and write to iceberg)
+client (Just a machine to produce messages and send them to kafka)
+trino 
+
+
+# Purpose of data pipeline.
+The client will generate json records of the form {"city": "North Sharonstad", "temperature": "80.59295088289818", "ts": "21"}. The city needs to faked, and temperature needs to be randon, and ts will be the hour value of the current time and send them to kafka topic called weather every 5 seconds.
+
+The kafka-connect container should have a config to read from the kafka topic weather, and insert into an iceberg table backed by minio. The bucket where this data goes should be named warehouse. kafka iceberg connector will write data to the iceberg table named weather, which is partitioned by column ts.
+
+Trino container should be configured to read the iceberg tables, and query.
+
+# Instructions
+The postgres container is just to support the metastore catalog for iceberg.
+
+Add any extra container if needed.
+
+All containers should be in the same network
+
+If any specific docker image is not avaialble build it using Dockerfile, keep them in subdirectories
+
+compose.yaml should be in the top level directory.
+
+Also if there are any additional containers needs to be built, add those build steps, and final docker compose up -d steps in a run.sh shellscript.
+
+Ask me any clarification questions. 
+
+Once you finish planning put the plan into a .md file, and start implementing it
