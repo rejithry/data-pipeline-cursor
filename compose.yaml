@@ -196,6 +196,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       KAFKA_TOPIC: weather
+      BATCH_SIZE: 10
       PRODUCE_INTERVAL: 5
     networks:
       - data-pipeline
