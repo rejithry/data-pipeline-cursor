@@ -43,6 +43,9 @@ docker build -t logging-server:latest ./logging-server
 print_status "Building Client (HTTP client) image..."
 docker build -t weather-client:latest ./client
 
+print_status "Building Flink image..."
+docker build -t flink-weather:latest ./flink
+
 print_status "All images built successfully!"
 
 # Step 2: Start Docker Compose
@@ -124,10 +127,12 @@ print_status "Data Pipeline is now running!"
 echo "=========================================="
 echo ""
 echo "Services:"
-echo "  - Logging Server:   http://localhost:9998"
-echo "  - MinIO Console:    http://localhost:9001 (admin/password)"
-echo "  - Kafka Connect:    http://localhost:8083"
-echo "  - Trino:            http://localhost:8080"
+echo "  - Logging Server:      http://localhost:9998"
+echo "  - MinIO Console:       http://localhost:9001 (admin/password)"
+echo "  - Kafka Connect:       http://localhost:8083"
+echo "  - Flink Dashboard:     http://localhost:8081"
+echo "  - Trino:               http://localhost:8080"
+echo "  - PostgreSQL Analytics: localhost:7777 (analytics/analytics)"
 echo ""
 echo "Test the logging server:"
 echo "  curl 'http://localhost:9998/log?city=TestCity&temperature=75.5'"

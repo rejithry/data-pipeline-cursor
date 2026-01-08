@@ -228,6 +228,114 @@ services:
       - data-pipeline
 
   # ===================
+  # Real-time Analytics (Flink)
+  # ===================
+
+  postgres-analytics:
+    image: postgres:15
+    container_name: postgres-analytics
+    hostname: postgres-analytics
+    ports:
+      - "7777:5432"
+    environment:
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics
+      POSTGRES_DB: analytics
+    volumes:
+      - postgres-analytics-data:/var/lib/postgresql/data
+      - ./flink/init-analytics-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analytics -d analytics"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - data-pipeline
+
+  flink-jobmanager:
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    container_name: flink-jobmanager
+    hostname: flink-jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-analytics:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/overview"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - data-pipeline
+
+  flink-taskmanager:
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    container_name: flink-taskmanager
+    hostname: flink-taskmanager
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    depends_on:
+      - flink-jobmanager
+    networks:
+      - data-pipeline
+
+  flink-sql-client:
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    container_name: flink-sql-client
+    hostname: flink-sql-client
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: flink-jobmanager
+        rest.address: flink-jobmanager
+        rest.port: 8081
+    command: >
+      bash -c "
+        echo 'Waiting for Flink JobManager REST API...'
+        while ! nc -z flink-jobmanager 8081; do sleep 5; done
+        echo 'Waiting for Flink JobManager RPC...'
+        while ! nc -z flink-jobmanager 6123; do sleep 5; done
+        echo 'Waiting for Kafka...'
+        while ! nc -z kafka 29092; do sleep 5; done
+        echo 'Waiting for PostgreSQL analytics...'
+        while ! nc -z postgres-analytics 5432; do sleep 5; done
+        sleep 15
+        echo 'Submitting Flink SQL job...'
+        /opt/flink/bin/sql-client.sh embedded -f /opt/flink/sql/weather-aggregation.sql
+        echo 'Job submitted. Keeping container alive...'
+        tail -f /dev/null
+      "
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+      flink-taskmanager:
+        condition: service_started
+      postgres-analytics:
+        condition: service_healthy
+    networks:
+      - data-pipeline
+
+  # ===================
   # Query Engine
   # ===================
 
@@ -263,3 +371,4 @@ networks:
 volumes:
   minio-data:
   postgres-data:
+  postgres-analytics-data:

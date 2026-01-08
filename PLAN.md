@@ -1,6 +1,6 @@
 # Data Pipeline Project Plan
 
-A Docker Compose-based data pipeline that generates fake weather data, sends it through a logging server to Kafka, writes to Iceberg tables on MinIO via Kafka Connect, and enables querying via Trino.
+A Docker Compose-based data pipeline that generates fake weather data, sends it through a logging server to Kafka, writes to Iceberg tables on MinIO via Kafka Connect, performs real-time aggregation with Flink, and enables querying via Trino.
 
 ## Architecture Diagram
 
@@ -17,9 +17,16 @@ flowchart TB
         KafkaConnect[Kafka Connect<br/>:8083]
     end
     
+    subgraph realtime [Real-time Processing Layer]
+        FlinkJM[Flink JobManager<br/>:8081]
+        FlinkTM[Flink TaskManager]
+        FlinkSQL[Flink SQL Client]
+    end
+    
     subgraph storage [Storage Layer]
         MinIO[MinIO S3<br/>:9000/:9001]
-        PostgreSQL[PostgreSQL<br/>:5432]
+        PostgreSQL[PostgreSQL Metastore<br/>:5432]
+        PostgresAnalytics[PostgreSQL Analytics<br/>:7777]
         HiveMetastore[Hive Metastore<br/>:9083]
     end
     
@@ -31,6 +38,10 @@ flowchart TB
     LoggingServer -->|produces JSON to<br/>weather topic| Kafka
     Zookeeper -.->|coordinates| Kafka
     Kafka -->|consumes from<br/>weather topic| KafkaConnect
+    Kafka -->|consumes from<br/>weather topic| FlinkTM
+    FlinkJM -.->|manages| FlinkTM
+    FlinkSQL -.->|submits jobs| FlinkJM
+    FlinkTM -->|writes avg temp<br/>per minute per city| PostgresAnalytics
     KafkaConnect -->|writes Parquet<br/>files to warehouse bucket| MinIO
     KafkaConnect -->|registers table<br/>metadata| HiveMetastore
     PostgreSQL -.->|stores catalog<br/>metadata| HiveMetastore
@@ -46,6 +57,8 @@ sequenceDiagram
     participant LS as Logging Server
     participant K as Kafka
     participant KC as Kafka Connect
+    participant F as Flink
+    participant PA as PostgreSQL Analytics
     participant HMS as Hive Metastore
     participant M as MinIO
     participant T as Trino
@@ -59,9 +72,15 @@ sequenceDiagram
         end
     end
     
-    KC->>K: Consume from 'weather' topic
-    KC->>HMS: Create/update Iceberg table metadata
-    KC->>M: Write Parquet files to s3a://warehouse/
+    par Batch Processing
+        KC->>K: Consume from 'weather' topic
+        KC->>HMS: Create/update Iceberg table metadata
+        KC->>M: Write Parquet files to s3a://warehouse/
+    and Real-time Processing
+        F->>K: Consume from 'weather' topic
+        F->>F: Aggregate avg temp per city per minute
+        F->>PA: Write to weather table
+    end
     
     T->>HMS: Query table schema & partitions
     HMS-->>T: Return metadata
@@ -77,10 +96,14 @@ sequenceDiagram
 | minio | minio/minio | 9000, 9001 | S3-compatible object storage for Iceberg data files |
 | minio-init | minio/mc | - | Initializes the 'warehouse' bucket |
 | postgres | postgres:15 | 5432 | Backend database for Hive Metastore |
+| postgres-analytics | postgres:15 | 7777 | Stores real-time aggregated weather data from Flink |
 | hive-metastore | Custom | 9083 | Iceberg table catalog (Thrift service) |
 | zookeeper | confluentinc/cp-zookeeper:7.5.0 | 2181 | Kafka cluster coordination |
 | kafka | confluentinc/cp-kafka:7.5.0 | 9092 | Message broker |
 | kafka-connect | Custom | 8083 | Runs Iceberg sink connector |
+| flink-jobmanager | Custom (Flink 1.18) | 8081 | Flink cluster manager |
+| flink-taskmanager | Custom (Flink 1.18) | - | Flink task executor |
+| flink-sql-client | Custom (Flink 1.18) | - | Submits Flink SQL jobs |
 | logging-server | Custom | 9998 | Flask web server that receives weather data and sends to Kafka |
 | client | Custom | - | Python HTTP client generating weather data |
 | trino | trinodb/trino | 8080 | SQL query engine for Iceberg tables |
@@ -99,6 +122,13 @@ sequenceDiagram
 │   ├── Dockerfile               # Python 3.11 slim + Flask
 │   ├── server.py                # Flask server with /log endpoint
 │   └── requirements.txt         # flask, confluent-kafka
+├── flink/
+│   ├── Dockerfile               # Flink 1.18 with Kafka/JDBC connectors
+│   ├── docker-entrypoint.sh     # Custom entrypoint script
+│   ├── submit-job.sh            # Job submission script
+│   ├── init-analytics-db.sql    # PostgreSQL analytics table schema
+│   └── sql/
+│       └── weather-aggregation.sql  # Flink SQL job definition
 ├── hive-metastore/
 │   ├── Dockerfile               # Eclipse Temurin JRE 11 + Hive 3.1.3
 │   └── metastore-site.xml       # Metastore configuration
@@ -112,6 +142,46 @@ sequenceDiagram
         ├── jvm.config           # JVM settings
         └── catalog/
             └── iceberg.properties  # Iceberg catalog config
+```
+
+## Flink Real-time Processing
+
+### Flink SQL Job
+
+The Flink job performs the following:
+1. Consumes JSON messages from Kafka `weather` topic
+2. Parses the weather data (city, temperature, ts)
+3. Aggregates average temperature per city per minute using tumbling windows
+4. Writes results to PostgreSQL `analytics.weather` table
+
+### PostgreSQL Analytics Schema
+
+```sql
+CREATE TABLE weather (
+    city VARCHAR(255) NOT NULL,
+    avg_temperature DOUBLE PRECISION,
+    window_start TIMESTAMP,
+    window_end TIMESTAMP,
+    record_count BIGINT,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (city, window_start)
+);
+```
+
+### Query Analytics Data
+
+```bash
+# Connect to analytics PostgreSQL
+docker exec -it postgres-analytics psql -U analytics -d analytics
+
+# Query aggregated data
+SELECT * FROM weather ORDER BY window_start DESC LIMIT 10;
+
+# Average temperature by city
+SELECT city, AVG(avg_temperature) as overall_avg 
+FROM weather 
+GROUP BY city 
+ORDER BY overall_avg DESC;
 ```
 
 ## Logging Server API
@@ -134,7 +204,7 @@ Accepts weather data and sends it to Kafka.
   "data": {
     "city": "New York",
     "temperature": "72.5",
-    "ts": "14"
+    "ts": "2026-01-08-14"
   }
 }
 ```
@@ -172,7 +242,7 @@ The weather data has the following JSON structure:
 
 - **Database**: default
 - **Table**: weather
-- **Partition**: ts (hour of day)
+- **Partition**: ts (timestamp)
 - **Location**: s3a://warehouse/default/weather
 - **File Format**: Parquet
 
@@ -180,10 +250,11 @@ The weather data has the following JSON structure:
 
 ### Credentials
 
-| Service | Username | Password |
-|---------|----------|----------|
-| MinIO | admin | password |
-| PostgreSQL | hive | hive |
+| Service | Username | Password | Port |
+|---------|----------|----------|------|
+| MinIO | admin | password | 9000/9001 |
+| PostgreSQL (Metastore) | hive | hive | 5432 |
+| PostgreSQL (Analytics) | analytics | analytics | 7777 |
 
 ### Network
 
@@ -213,7 +284,7 @@ curl "http://localhost:9998/log?city=TestCity&temperature=75.5"
 curl http://localhost:9998/health
 ```
 
-### Query Data with Trino
+### Query Batch Data with Trino
 
 ```bash
 docker exec -it trino trino
@@ -230,13 +301,33 @@ SHOW TABLES FROM iceberg.default;
 SELECT * FROM iceberg.default.weather;
 
 -- Query by partition
-SELECT * FROM iceberg.default.weather WHERE ts = '14';
+SELECT * FROM iceberg.default.weather WHERE ts = '2026-01-08-14';
 
 -- Aggregate queries
 SELECT city, AVG(CAST(temperature AS DOUBLE)) as avg_temp 
 FROM iceberg.default.weather 
 GROUP BY city;
 ```
+
+### Query Real-time Aggregated Data
+
+```bash
+# Connect to PostgreSQL analytics
+docker exec -it postgres-analytics psql -U analytics -d analytics
+
+# View latest aggregations
+SELECT * FROM weather ORDER BY window_start DESC LIMIT 10;
+
+# View average temperature by city
+SELECT city, AVG(avg_temperature) as overall_avg, SUM(record_count) as total_records
+FROM weather 
+GROUP BY city 
+ORDER BY overall_avg DESC;
+```
+
+### View Flink Dashboard
+
+Open http://localhost:8081 to view the Flink web UI and monitor running jobs.
 
 ### View Logs
 
@@ -250,6 +341,11 @@ docker compose logs -f logging-server
 # Kafka Connect logs
 docker compose logs -f kafka-connect
 
+# Flink logs
+docker compose logs -f flink-jobmanager
+docker compose logs -f flink-taskmanager
+docker compose logs -f flink-sql-client
+
 # All logs
 docker compose logs -f
 ```
@@ -259,7 +355,9 @@ docker compose logs -f
 - **Logging Server**: http://localhost:9998
 - **MinIO Console**: http://localhost:9001 (admin/password)
 - **Kafka Connect REST API**: http://localhost:8083
+- **Flink Dashboard**: http://localhost:8081
 - **Trino Web UI**: http://localhost:8080
+- **PostgreSQL Analytics**: localhost:7777 (analytics/analytics)
 
 ### Stop the Pipeline
 
@@ -287,6 +385,12 @@ curl http://localhost:8083/connectors/iceberg-sink/status | jq
 curl -X POST http://localhost:8083/connectors/iceberg-sink/tasks/0/restart
 ```
 
+### Check Flink Jobs
+
+```bash
+curl http://localhost:8081/jobs/overview | jq
+```
+
 ### Check Kafka Topics
 
 ```bash
@@ -297,4 +401,10 @@ docker exec -it kafka kafka-topics --bootstrap-server localhost:9092 --list
 
 ```bash
 docker exec -it minio mc ls myminio/warehouse --recursive
+```
+
+### Restart Flink SQL Job
+
+```bash
+docker compose restart flink-sql-client
 ```
