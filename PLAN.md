@@ -34,6 +34,10 @@ flowchart TB
         Trino[Trino<br/>:8080]
     end
     
+    subgraph visualization [Visualization Layer]
+        VizServer[Visualization Server<br/>Node.js :3000]
+    end
+    
     Client -->|HTTP GET /log| LoggingServer
     LoggingServer -->|produces JSON to<br/>weather topic| Kafka
     Zookeeper -.->|coordinates| Kafka
@@ -47,6 +51,7 @@ flowchart TB
     PostgreSQL -.->|stores catalog<br/>metadata| HiveMetastore
     Trino -->|queries table<br/>metadata| HiveMetastore
     Trino -->|reads Parquet<br/>data files| MinIO
+    VizServer -->|queries aggregated<br/>weather data| PostgresAnalytics
 ```
 
 ## Data Flow
@@ -59,6 +64,7 @@ sequenceDiagram
     participant KC as Kafka Connect
     participant F as Flink
     participant PA as PostgreSQL Analytics
+    participant V as Visualization Server
     participant HMS as Hive Metastore
     participant M as MinIO
     participant T as Trino
@@ -80,6 +86,10 @@ sequenceDiagram
         F->>K: Consume from 'weather' topic
         F->>F: Aggregate avg temp per city per minute
         F->>PA: Write to weather table
+    and Visualization
+        V->>PA: Poll for new data (every 2s)
+        PA-->>V: Return aggregated data
+        V->>V: Update Google Charts
     end
     
     T->>HMS: Query table schema & partitions
@@ -106,6 +116,7 @@ sequenceDiagram
 | flink-sql-client | Custom (Flink 1.18) | - | Submits Flink SQL jobs |
 | logging-server | Custom | 9998 | Flask web server that receives weather data and sends to Kafka |
 | client | Custom | - | Python HTTP client generating weather data |
+| visualization-server | Custom (Node.js) | 3000 | Real-time dashboard with Google Charts |
 | trino | trinodb/trino | 8080 | SQL query engine for Iceberg tables |
 
 ## Directory Structure
@@ -122,6 +133,12 @@ sequenceDiagram
 │   ├── Dockerfile               # Python 3.11 slim + Flask
 │   ├── server.py                # Flask server with /log endpoint
 │   └── requirements.txt         # flask, confluent-kafka
+├── visualization-server/
+│   ├── Dockerfile               # Node.js 20 slim
+│   ├── package.json             # express, pg dependencies
+│   ├── server.js                # Express server with PostgreSQL connection
+│   └── public/
+│       └── index.html           # Dashboard with Google Charts
 ├── flink/
 │   ├── Dockerfile               # Flink 1.18 with Kafka/JDBC connectors
 │   ├── docker-entrypoint.sh     # Custom entrypoint script
@@ -219,6 +236,52 @@ Health check endpoint.
   "status": "healthy"
 }
 ```
+
+## Visualization Server
+
+The visualization server provides a real-time dashboard for monitoring weather data aggregations.
+
+### Features
+
+- **Real-time updates**: Polls PostgreSQL every 2 seconds for new data
+- **10 line charts**: One chart per city tracking temperature over time
+- **Stats bar**: Shows total cities, data points, average temperature, and last update time
+- **Modern dark theme**: Gradient backgrounds, animations, and responsive design
+
+### Cities Tracked
+
+The dashboard displays data for the following 10 cities (matching the client):
+- San Francisco, New York, Los Angeles, Chicago, Houston
+- Phoenix, Seattle, Denver, Miami, Boston
+
+### API Endpoints
+
+#### GET /api/weather
+Returns all historical weather data grouped by city.
+
+**Response:**
+```json
+{
+  "cities": ["San Francisco", "New York", ...],
+  "data": {
+    "San Francisco": [
+      {"time": "2026-01-08T14:30:00.000Z", "temperature": 72.5},
+      ...
+    ],
+    ...
+  }
+}
+```
+
+#### GET /api/weather/latest?since=<timestamp>
+Returns weather data since the specified timestamp (for incremental updates).
+
+#### GET /health
+Health check endpoint.
+
+### Access the Dashboard
+
+Open http://localhost:3000 in your browser to view the real-time weather analytics dashboard.
 
 ## Data Schema
 
@@ -338,6 +401,9 @@ docker compose logs -f client
 # Logging server logs
 docker compose logs -f logging-server
 
+# Visualization server logs
+docker compose logs -f visualization-server
+
 # Kafka Connect logs
 docker compose logs -f kafka-connect
 
@@ -352,6 +418,7 @@ docker compose logs -f
 
 ### Access Services
 
+- **Weather Dashboard**: http://localhost:3000 (real-time visualization)
 - **Logging Server**: http://localhost:9998
 - **MinIO Console**: http://localhost:9001 (admin/password)
 - **Kafka Connect REST API**: http://localhost:8083

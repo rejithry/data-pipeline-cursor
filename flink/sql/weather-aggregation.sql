@@ -4,7 +4,7 @@ CREATE TABLE weather_source (
     temperature STRING,
     ts STRING,
     event_time AS TO_TIMESTAMP(ts, 'yyyy-MM-dd-HH'),
-    WATERMARK FOR event_time AS event_time - INTERVAL '1' MINUTE
+    WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
 ) WITH (
     'connector' = 'kafka',
     'topic' = 'weather',
@@ -34,16 +34,16 @@ CREATE TABLE weather_avg_sink (
     'driver' = 'org.postgresql.Driver'
 );
 
--- Insert aggregated data: average temperature per city per minute
+-- Insert aggregated data: average temperature per city every 5 seconds
 INSERT INTO weather_avg_sink
 SELECT 
     city,
     AVG(CAST(temperature AS DOUBLE)) as avg_temperature,
-    TUMBLE_START(event_time, INTERVAL '1' MINUTE) as window_start,
-    TUMBLE_END(event_time, INTERVAL '1' MINUTE) as window_end,
+    TUMBLE_START(event_time, INTERVAL '5' SECOND) as window_start,
+    TUMBLE_END(event_time, INTERVAL '5' SECOND) as window_end,
     COUNT(*) as record_count,
     CURRENT_TIMESTAMP as last_updated
 FROM weather_source
 GROUP BY 
     city,
-    TUMBLE(event_time, INTERVAL '1' MINUTE);
+    TUMBLE(event_time, INTERVAL '5' SECOND);

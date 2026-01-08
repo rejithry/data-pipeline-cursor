@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Analytics Dashboard</title>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;500;700&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+      min-height: 100vh;
+      color: #e0e0e0;
+    }
+    
+    header {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 1.5rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .header-content {
+      max-width: 1800px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+    
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #00d4ff;
+      padding: 0.5rem 1rem;
+      background: rgba(0, 212, 255, 0.1);
+      border: 1px solid rgba(0, 212, 255, 0.3);
+      border-radius: 20px;
+    }
+    
+    .pulse {
+      width: 8px;
+      height: 8px;
+      background: #00ff88;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7); }
+      50% { opacity: 0.8; box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); }
+    }
+    
+    .dashboard {
+      max-width: 1800px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 1.25rem;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #00d4ff;
+    }
+    
+    .stat-label {
+      font-size: 0.85rem;
+      color: #888;
+      margin-top: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+    }
+    
+    @media (max-width: 1200px) {
+      .charts-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .chart-container {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.5rem;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .chart-container:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0, 212, 255, 0.1);
+      border-color: rgba(0, 212, 255, 0.2);
+    }
+    
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    
+    .city-name {
+      font-size: 1.2rem;
+      font-weight: 500;
+      color: #fff;
+    }
+    
+    .city-temp {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.1rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: 8px;
+      background: rgba(123, 44, 191, 0.2);
+      color: #c084fc;
+    }
+    
+    .chart {
+      width: 100%;
+      height: 250px;
+    }
+    
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+      gap: 1rem;
+    }
+    
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(0, 212, 255, 0.2);
+      border-top-color: #00d4ff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+      font-family: 'JetBrains Mono', monospace;
+      color: #888;
+    }
+    
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: #555;
+      font-size: 0.85rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1>⚡ Weather Analytics Dashboard</h1>
+      <div class="status-badge">
+        <span class="pulse"></span>
+        <span id="updateStatus">Connecting...</span>
+      </div>
+    </div>
+  </header>
+  
+  <main class="dashboard">
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-value" id="cityCount">10</div>
+        <div class="stat-label">Cities Tracked</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="dataPoints">0</div>
+        <div class="stat-label">Data Points</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="avgTemp">--</div>
+        <div class="stat-label">Avg Temperature (°F)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="lastUpdate">--:--:--</div>
+        <div class="stat-label">Last Update</div>
+      </div>
+    </div>
+    
+    <div id="chartsContainer" class="charts-grid">
+      <div class="loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading weather data...</div>
+      </div>
+    </div>
+  </main>
+  
+  <footer>
+    Real-time data from Flink streaming analytics • Updates every 2 seconds
+  </footer>
+
+  <script>
+    // Load Google Charts
+    google.charts.load('current', { packages: ['corechart', 'line'] });
+    
+    const cities = [
+      'San Francisco', 'New York', 'Los Angeles', 'Chicago', 'Houston',
+      'Phoenix', 'Seattle', 'Denver', 'Miami', 'Boston'
+    ];
+    
+    // City colors for charts
+    const cityColors = {
+      'San Francisco': '#00d4ff',
+      'New York': '#7b2cbf',
+      'Los Angeles': '#ff6b6b',
+      'Chicago': '#00ff88',
+      'Houston': '#ffd93d',
+      'Phoenix': '#ff8c42',
+      'Seattle': '#6c5ce7',
+      'Denver': '#a8e6cf',
+      'Miami': '#ff85a2',
+      'Boston': '#4ecdc4'
+    };
+    
+    let weatherData = {};
+    let charts = {};
+    let lastFetchTime = null;
+    let totalDataPoints = 0;
+    
+    // Initialize charts after Google Charts is loaded
+    google.charts.setOnLoadCallback(initDashboard);
+    
+    async function initDashboard() {
+      createChartContainers();
+      await fetchInitialData();
+      startPolling();
+    }
+    
+    function createChartContainers() {
+      const container = document.getElementById('chartsContainer');
+      container.innerHTML = '';
+      
+      cities.forEach(city => {
+        const chartDiv = document.createElement('div');
+        chartDiv.className = 'chart-container';
+        chartDiv.innerHTML = `
+          <div class="chart-header">
+            <span class="city-name">${city}</span>
+            <span class="city-temp" id="temp-${city.replace(/\s/g, '-')}">-- °F</span>
+          </div>
+          <div id="chart-${city.replace(/\s/g, '-')}" class="chart"></div>
+        `;
+        container.appendChild(chartDiv);
+        
+        weatherData[city] = [];
+      });
+    }
+    
+    async function fetchInitialData() {
+      try {
+        const response = await fetch('/api/weather');
+        const data = await response.json();
+        
+        data.cities.forEach(city => {
+          if (data.data[city]) {
+            weatherData[city] = data.data[city];
+          }
+        });
+        
+        updateAllCharts();
+        updateStats();
+        document.getElementById('updateStatus').textContent = 'Live';
+      } catch (error) {
+        console.error('Error fetching initial data:', error);
+        document.getElementById('updateStatus').textContent = 'Error';
+      }
+    }
+    
+    async function fetchLatestData() {
+      try {
+        const since = lastFetchTime || new Date(0).toISOString();
+        const response = await fetch(`/api/weather/latest?since=${encodeURIComponent(since)}`);
+        const data = await response.json();
+        
+        let hasNewData = false;
+        
+        data.cities.forEach(city => {
+          if (data.data[city] && data.data[city].length > 0) {
+            weatherData[city] = [...weatherData[city], ...data.data[city]];
+            // Keep last 100 data points per city
+            if (weatherData[city].length > 100) {
+              weatherData[city] = weatherData[city].slice(-100);
+            }
+            hasNewData = true;
+          }
+        });
+        
+        if (hasNewData) {
+          lastFetchTime = new Date().toISOString();
+          updateAllCharts();
+          updateStats();
+        }
+        
+        document.getElementById('updateStatus').textContent = 'Live';
+      } catch (error) {
+        console.error('Error fetching latest data:', error);
+        document.getElementById('updateStatus').textContent = 'Reconnecting...';
+      }
+    }
+    
+    function updateAllCharts() {
+      cities.forEach(city => {
+        updateChart(city);
+      });
+    }
+    
+    function updateChart(city) {
+      const chartId = `chart-${city.replace(/\s/g, '-')}`;
+      const tempId = `temp-${city.replace(/\s/g, '-')}`;
+      const chartElement = document.getElementById(chartId);
+      
+      if (!chartElement) return;
+      
+      const cityData = weatherData[city] || [];
+      
+      if (cityData.length === 0) {
+        chartElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-family:JetBrains Mono,monospace;">Awaiting data...</div>';
+        return;
+      }
+      
+      // Update current temperature
+      const latestTemp = cityData[cityData.length - 1].temperature;
+      document.getElementById(tempId).textContent = `${latestTemp.toFixed(1)} °F`;
+      
+      // Prepare data for Google Charts
+      const dataTable = new google.visualization.DataTable();
+      dataTable.addColumn('datetime', 'Time');
+      dataTable.addColumn('number', 'Temperature (°F)');
+      
+      cityData.forEach(point => {
+        dataTable.addRow([new Date(point.time), point.temperature]);
+      });
+      
+      const options = {
+        backgroundColor: 'transparent',
+        chartArea: { 
+          left: 50, 
+          top: 20, 
+          right: 20, 
+          bottom: 40,
+          width: '100%',
+          height: '80%'
+        },
+        colors: [cityColors[city] || '#00d4ff'],
+        legend: 'none',
+        lineWidth: 2,
+        pointSize: 0,
+        curveType: 'function',
+        hAxis: {
+          textStyle: { color: '#666', fontName: 'JetBrains Mono', fontSize: 10 },
+          gridlines: { color: 'rgba(255,255,255,0.05)' },
+          format: 'HH:mm:ss'
+        },
+        vAxis: {
+          textStyle: { color: '#666', fontName: 'JetBrains Mono', fontSize: 10 },
+          gridlines: { color: 'rgba(255,255,255,0.05)' },
+          minValue: 0,
+          maxValue: 120
+        },
+        tooltip: {
+          textStyle: { fontName: 'Outfit' }
+        },
+        animation: {
+          duration: 300,
+          easing: 'out'
+        }
+      };
+      
+      if (!charts[city]) {
+        charts[city] = new google.visualization.LineChart(chartElement);
+      }
+      
+      charts[city].draw(dataTable, options);
+    }
+    
+    function updateStats() {
+      let totalPoints = 0;
+      let tempSum = 0;
+      let tempCount = 0;
+      
+      cities.forEach(city => {
+        const data = weatherData[city] || [];
+        totalPoints += data.length;
+        data.forEach(point => {
+          tempSum += point.temperature;
+          tempCount++;
+        });
+      });
+      
+      document.getElementById('dataPoints').textContent = totalPoints;
+      document.getElementById('avgTemp').textContent = tempCount > 0 ? (tempSum / tempCount).toFixed(1) : '--';
+      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    }
+    
+    function startPolling() {
+      setInterval(fetchLatestData, 2000);
+    }
+  </script>
+</body>
+</html>

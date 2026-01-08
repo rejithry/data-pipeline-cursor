@@ -336,6 +336,36 @@ services:
       - data-pipeline
 
   # ===================
+  # Visualization
+  # ===================
+
+  visualization-server:
+    build:
+      context: ./visualization-server
+      dockerfile: Dockerfile
+    container_name: visualization-server
+    hostname: visualization-server
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres-analytics:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      POSTGRES_HOST: postgres-analytics
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: analytics
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - data-pipeline
+
+  # ===================
   # Query Engine
   # ===================
 

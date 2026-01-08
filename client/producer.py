@@ -2,7 +2,7 @@
 """
 Weather data client that generates fake weather records
 and sends them to the logging server via HTTP GET requests.
-Sends 10 messages every 5 seconds.
+Sends 10 messages every 5 seconds using a static list of cities.
 """
 
 import os
@@ -10,10 +10,20 @@ import random
 import time
 from datetime import datetime
 import requests
-from faker import Faker
 
-# Initialize Faker for generating fake city names
-fake = Faker()
+# Static list of 10 cities (generated once, used consistently)
+CITIES = [
+    "San Francisco",
+    "New York",
+    "Los Angeles",
+    "Chicago",
+    "Houston",
+    "Phoenix",
+    "Seattle",
+    "Denver",
+    "Miami",
+    "Boston"
+]
 
 # Logging server configuration
 LOGGING_SERVER_URL = os.getenv("LOGGING_SERVER_URL", "http://logging-server:9998")
@@ -21,10 +31,10 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "10"))
 PRODUCE_INTERVAL = int(os.getenv("PRODUCE_INTERVAL", "5"))
 
 
-def generate_weather_data():
-    """Generate fake weather data with random city and temperature."""
+def generate_weather_data(city):
+    """Generate weather data with the given city and random temperature."""
     return {
-        "city": fake.city(),
+        "city": city,
         "temperature": str(round(random.uniform(0, 120), 2)),
     }
 
@@ -44,18 +54,17 @@ def send_to_logging_server(city, temperature):
         return False, {"error": str(e)}
 
 
-def send_batch(batch_size):
-    """Send a batch of weather records to the logging server."""
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Sending {batch_size} messages...")
+def send_batch():
+    """Send a batch of weather records for all cities to the logging server."""
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Sending {len(CITIES)} messages...")
     
     success_count = 0
-    for i in range(batch_size):
-        # Generate weather data
-        data = generate_weather_data()
-        city = data["city"]
+    for i, city in enumerate(CITIES):
+        # Generate weather data for this city
+        data = generate_weather_data(city)
         temperature = data["temperature"]
 
-        print(f"  [{i+1}/{batch_size}] city={city}, temperature={temperature}")
+        print(f"  [{i+1}/{len(CITIES)}] city={city}, temperature={temperature}")
 
         # Send to logging server
         success, response = send_to_logging_server(city, temperature)
@@ -66,7 +75,7 @@ def send_batch(batch_size):
         else:
             print(f"    -> Failed: {response}")
     
-    print(f"Batch complete. {success_count}/{batch_size} messages sent successfully.")
+    print(f"Batch complete. {success_count}/{len(CITIES)} messages sent successfully.")
 
 
 def wait_for_logging_server():
@@ -96,7 +105,7 @@ def main():
     """Main function to run the weather data client."""
     print(f"Starting weather client...")
     print(f"Logging Server URL: {LOGGING_SERVER_URL}")
-    print(f"Batch Size: {BATCH_SIZE} messages")
+    print(f"Cities: {CITIES}")
     print(f"Interval: {PRODUCE_INTERVAL} seconds")
 
     # Wait for logging server to be ready
@@ -106,8 +115,8 @@ def main():
 
     try:
         while True:
-            # Send a batch of messages
-            send_batch(BATCH_SIZE)
+            # Send a batch of messages for all cities
+            send_batch()
 
             # Wait for the specified interval
             time.sleep(PRODUCE_INTERVAL)
