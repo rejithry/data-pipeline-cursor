@@ -37,8 +37,11 @@ docker build -t hive-metastore:latest ./hive-metastore
 print_status "Building Kafka Connect image..."
 docker build -t kafka-connect-iceberg:latest ./kafka-connect
 
-print_status "Building Client (Python producer) image..."
-docker build -t weather-producer:latest ./client
+print_status "Building Logging Server image..."
+docker build -t logging-server:latest ./logging-server
+
+print_status "Building Client (HTTP client) image..."
+docker build -t weather-client:latest ./client
 
 print_status "All images built successfully!"
 
@@ -46,7 +49,14 @@ print_status "All images built successfully!"
 print_status "Starting Docker Compose services..."
 docker compose up -d
 
-# Step 3: Wait for services to be healthy
+# Step 3: Restart logging-server to ensure fresh container
+print_status "Restarting logging-server container..."
+docker compose stop logging-server 2>/dev/null || true
+docker compose rm -f logging-server 2>/dev/null || true
+docker compose up -d logging-server
+sleep 5
+
+# Step 5: Wait for services to be healthy
 print_status "Waiting for services to become healthy..."
 
 # Wait for Kafka Connect to be ready
@@ -65,7 +75,7 @@ done
 echo ""
 print_status "Kafka Connect is ready!"
 
-# Step 4: Remove existing connector and register the Iceberg sink connector
+# Step 6: Remove existing connector and register the Iceberg sink connector
 print_status "Removing existing iceberg-sink connector (if any)..."
 curl -X DELETE http://localhost:8083/connectors/iceberg-sink 2>/dev/null || true
 sleep 2
@@ -103,7 +113,7 @@ curl -X POST http://localhost:8083/connectors \
 echo ""
 print_status "Connector registered!"
 
-# Step 5: Wait a moment and check connector status
+# Step 7: Wait a moment and check connector status
 sleep 5
 print_status "Checking connector status..."
 curl -s http://localhost:8083/connectors/iceberg-sink/status | python3 -m json.tool 2>/dev/null || curl -s http://localhost:8083/connectors/iceberg-sink/status
@@ -114,9 +124,13 @@ print_status "Data Pipeline is now running!"
 echo "=========================================="
 echo ""
 echo "Services:"
+echo "  - Logging Server:   http://localhost:9998"
 echo "  - MinIO Console:    http://localhost:9001 (admin/password)"
 echo "  - Kafka Connect:    http://localhost:8083"
 echo "  - Trino:            http://localhost:8080"
+echo ""
+echo "Test the logging server:"
+echo "  curl 'http://localhost:9998/log?city=TestCity&temperature=75.5'"
 echo ""
 echo "To query the Iceberg table in Trino:"
 echo "  docker exec -it trino trino"
@@ -124,6 +138,7 @@ echo "  trino> SELECT * FROM iceberg.default.weather;"
 echo ""
 echo "To view logs:"
 echo "  docker compose logs -f client"
+echo "  docker compose logs -f logging-server"
 echo "  docker compose logs -f kafka-connect"
 echo ""
 echo "To stop the pipeline:"

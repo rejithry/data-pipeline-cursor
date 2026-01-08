@@ -29,8 +29,8 @@ RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/hive/hive-standalone-me
 # Download Hive Metastore client dependencies
 RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/hive/hive-metastore/3.1.3/hive-metastore-3.1.3.jar \
     -o /usr/share/confluent-hub-components/iceberg-sink/lib/hive-metastore-3.1.3.jar \
-    && curl -fsSL https://repo1.maven.org/maven2/org/apache/thrift/libthrift/0.16.0/libthrift-0.16.0.jar \
-    -o /usr/share/confluent-hub-components/iceberg-sink/lib/libthrift-0.16.0.jar \
+    && curl -fsSL https://repo1.maven.org/maven2/org/apache/thrift/libthrift/0.9.3/libthrift-0.9.3.jar \
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/libthrift-0.9.3.jar \
     && curl -fsSL https://repo1.maven.org/maven2/org/apache/thrift/libfb303/0.9.3/libfb303-0.9.3.jar \
     -o /usr/share/confluent-hub-components/iceberg-sink/lib/libfb303-0.9.3.jar
 
@@ -40,7 +40,9 @@ RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/hive/hive-exec/3.1.3/hi
     && curl -fsSL https://repo1.maven.org/maven2/org/apache/hive/hive-serde/3.1.3/hive-serde-3.1.3.jar \
     -o /usr/share/confluent-hub-components/iceberg-sink/lib/hive-serde-3.1.3.jar \
     && curl -fsSL https://repo1.maven.org/maven2/org/apache/hive/hive-common/3.1.3/hive-common-3.1.3.jar \
-    -o /usr/share/confluent-hub-components/iceberg-sink/lib/hive-common-3.1.3.jar
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/hive-common-3.1.3.jar \
+    && curl -fsSL https://repo1.maven.org/maven2/org/apache/hive/hive-storage-api/2.8.1/hive-storage-api-2.8.1.jar \
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/hive-storage-api-2.8.1.jar
 
 # Download Hadoop dependencies
 RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-common/3.3.6/hadoop-common-3.3.6.jar \
@@ -48,15 +50,23 @@ RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-common/3.
     && curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-hdfs-client/3.3.6/hadoop-hdfs-client-3.3.6.jar \
     -o /usr/share/confluent-hub-components/iceberg-sink/lib/hadoop-hdfs-client-3.3.6.jar \
     && curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-mapreduce-client-core/3.3.6/hadoop-mapreduce-client-core-3.3.6.jar \
-    -o /usr/share/confluent-hub-components/iceberg-sink/lib/hadoop-mapreduce-client-core-3.3.6.jar
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/hadoop-mapreduce-client-core-3.3.6.jar \
+    && curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-auth/3.3.6/hadoop-auth-3.3.6.jar \
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/hadoop-auth-3.3.6.jar \
+    && curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-client-api/3.3.6/hadoop-client-api-3.3.6.jar \
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/hadoop-client-api-3.3.6.jar \
+    && curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-client-runtime/3.3.6/hadoop-client-runtime-3.3.6.jar \
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/hadoop-client-runtime-3.3.6.jar
 
-# Download Apache Commons dependencies (required by Hadoop)
+# Download Apache Commons dependencies (required by Hadoop/Hive)
 RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/commons/commons-configuration2/2.8.0/commons-configuration2-2.8.0.jar \
     -o /usr/share/confluent-hub-components/iceberg-sink/lib/commons-configuration2-2.8.0.jar \
     && curl -fsSL https://repo1.maven.org/maven2/commons-logging/commons-logging/1.2/commons-logging-1.2.jar \
     -o /usr/share/confluent-hub-components/iceberg-sink/lib/commons-logging-1.2.jar \
     && curl -fsSL https://repo1.maven.org/maven2/org/apache/commons/commons-text/1.10.0/commons-text-1.10.0.jar \
-    -o /usr/share/confluent-hub-components/iceberg-sink/lib/commons-text-1.10.0.jar
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/commons-text-1.10.0.jar \
+    && curl -fsSL https://repo1.maven.org/maven2/commons-lang/commons-lang/2.6/commons-lang-2.6.jar \
+    -o /usr/share/confluent-hub-components/iceberg-sink/lib/commons-lang-2.6.jar
 
 # Download AWS SDK for S3/MinIO support
 RUN curl -fsSL https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/2.21.29/bundle-2.21.29.jar \

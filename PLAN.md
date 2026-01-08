@@ -1,13 +1,14 @@
 # Data Pipeline Project Plan
 
-A Docker Compose-based data pipeline that generates fake weather data, streams it through Kafka, writes to Iceberg tables on MinIO, and enables querying via Trino.
+A Docker Compose-based data pipeline that generates fake weather data, sends it through a logging server to Kafka, writes to Iceberg tables on MinIO via Kafka Connect, and enables querying via Trino.
 
 ## Architecture Diagram
 
 ```mermaid
 flowchart TB
     subgraph producers [Data Generation Layer]
-        Client[Client<br/>Python Producer]
+        Client[Client<br/>Python HTTP Client]
+        LoggingServer[Logging Server<br/>Flask :9998]
     end
     
     subgraph kafka_layer [Message Broker Layer]
@@ -26,7 +27,8 @@ flowchart TB
         Trino[Trino<br/>:8080]
     end
     
-    Client -->|produces JSON to<br/>weather topic| Kafka
+    Client -->|HTTP GET /log| LoggingServer
+    LoggingServer -->|produces JSON to<br/>weather topic| Kafka
     Zookeeper -.->|coordinates| Kafka
     Kafka -->|consumes from<br/>weather topic| KafkaConnect
     KafkaConnect -->|writes Parquet<br/>files to warehouse bucket| MinIO
@@ -41,6 +43,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant C as Client
+    participant LS as Logging Server
     participant K as Kafka
     participant KC as Kafka Connect
     participant HMS as Hive Metastore
@@ -49,7 +52,11 @@ sequenceDiagram
     
     loop Every 5 seconds
         C->>C: Generate 10 weather records
-        C->>K: Produce to 'weather' topic
+        loop For each record
+            C->>LS: GET /log?city=X&temperature=Y
+            LS->>K: Produce to 'weather' topic
+            LS-->>C: 200 OK
+        end
     end
     
     KC->>K: Consume from 'weather' topic
@@ -74,7 +81,8 @@ sequenceDiagram
 | zookeeper | confluentinc/cp-zookeeper:7.5.0 | 2181 | Kafka cluster coordination |
 | kafka | confluentinc/cp-kafka:7.5.0 | 9092 | Message broker |
 | kafka-connect | Custom | 8083 | Runs Iceberg sink connector |
-| client | Custom | - | Python producer generating weather data |
+| logging-server | Custom | 9998 | Flask web server that receives weather data and sends to Kafka |
+| client | Custom | - | Python HTTP client generating weather data |
 | trino | trinodb/trino | 8080 | SQL query engine for Iceberg tables |
 
 ## Directory Structure
@@ -85,8 +93,12 @@ sequenceDiagram
 ├── PLAN.md                      # This file
 ├── client/
 │   ├── Dockerfile               # Python 3.11 slim image
-│   ├── producer.py              # Weather data generator
-│   └── requirements.txt         # confluent-kafka, faker
+│   ├── producer.py              # HTTP client sending to logging server
+│   └── requirements.txt         # requests, faker
+├── logging-server/
+│   ├── Dockerfile               # Python 3.11 slim + Flask
+│   ├── server.py                # Flask server with /log endpoint
+│   └── requirements.txt         # flask, confluent-kafka
 ├── hive-metastore/
 │   ├── Dockerfile               # Eclipse Temurin JRE 11 + Hive 3.1.3
 │   └── metastore-site.xml       # Metastore configuration
@@ -102,6 +114,42 @@ sequenceDiagram
             └── iceberg.properties  # Iceberg catalog config
 ```
 
+## Logging Server API
+
+### GET /log
+
+Accepts weather data and sends it to Kafka.
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| city | string | Yes | City name |
+| temperature | string | Yes | Temperature value |
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Weather data logged",
+  "data": {
+    "city": "New York",
+    "temperature": "72.5",
+    "ts": "14"
+  }
+}
+```
+
+### GET /health
+
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
+
 ## Data Schema
 
 The weather data has the following JSON structure:
@@ -110,7 +158,7 @@ The weather data has the following JSON structure:
 {
   "city": "North Sharonstad",
   "temperature": "80.59",
-  "ts": "21"
+  "ts": "2026-01-08-14"
 }
 ```
 
@@ -118,7 +166,7 @@ The weather data has the following JSON structure:
 |-------|------|-------------|
 | city | string | Randomly generated fake city name |
 | temperature | string | Random temperature (0-120°F) |
-| ts | string | Current hour (0-23), used for partitioning |
+| ts | string | Timestamp in YYYY-MM-DD-HH format, used for partitioning |
 
 ## Iceberg Table
 
@@ -139,7 +187,7 @@ The weather data has the following JSON structure:
 
 ### Network
 
-All containers are connected via the `data-pipeline` bridge network.
+All containers are connected via the `datapipeline` bridge network.
 
 ## Usage
 
@@ -154,6 +202,16 @@ This will:
 2. Start all services
 3. Wait for Kafka Connect to be ready
 4. Register the Iceberg sink connector
+
+### Test the Logging Server
+
+```bash
+# Send a test weather record
+curl "http://localhost:9998/log?city=TestCity&temperature=75.5"
+
+# Check health
+curl http://localhost:9998/health
+```
 
 ### Query Data with Trino
 
@@ -183,8 +241,11 @@ GROUP BY city;
 ### View Logs
 
 ```bash
-# Client logs (producer)
+# Client logs
 docker compose logs -f client
+
+# Logging server logs
+docker compose logs -f logging-server
 
 # Kafka Connect logs
 docker compose logs -f kafka-connect
@@ -195,6 +256,7 @@ docker compose logs -f
 
 ### Access Services
 
+- **Logging Server**: http://localhost:9998
 - **MinIO Console**: http://localhost:9001 (admin/password)
 - **Kafka Connect REST API**: http://localhost:8083
 - **Trino Web UI**: http://localhost:8080

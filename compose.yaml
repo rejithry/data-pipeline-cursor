@@ -181,6 +181,33 @@ services:
       - data-pipeline
 
   # ===================
+  # Logging Server
+  # ===================
+
+  logging-server:
+    build:
+      context: ./logging-server
+      dockerfile: Dockerfile
+    container_name: logging-server
+    hostname: logging-server
+    ports:
+      - "9998:9998"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: on-failure
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: weather
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9998/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - data-pipeline
+
+  # ===================
   # Client (Producer)
   # ===================
 
@@ -191,11 +218,10 @@ services:
     container_name: client
     hostname: client
     depends_on:
-      kafka:
+      logging-server:
         condition: service_healthy
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      KAFKA_TOPIC: weather
+      LOGGING_SERVER_URL: http://logging-server:9998
       BATCH_SIZE: 10
       PRODUCE_INTERVAL: 5
     networks:
@@ -227,6 +253,7 @@ services:
 
 networks:
   data-pipeline:
+    name: datapipeline
     driver: bridge
 
 # ===================
