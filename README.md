@@ -45,7 +45,7 @@ flowchart TB
     Kafka -->|consumes from<br/>weather topic| FlinkTM
     FlinkJM -.->|manages| FlinkTM
     FlinkSQL -.->|submits jobs| FlinkJM
-    FlinkTM -->|writes avg temp<br/>per minute per city| PostgresAnalytics
+        FlinkTM -->|writes avg temp<br/>every 5 seconds per city| PostgresAnalytics
     KafkaConnect -->|writes Parquet<br/>files to warehouse bucket| MinIO
     KafkaConnect -->|registers table<br/>metadata| HiveMetastore
     PostgreSQL -.->|stores catalog<br/>metadata| HiveMetastore
@@ -84,7 +84,7 @@ sequenceDiagram
         KC->>M: Write Parquet files to s3a://warehouse/
     and Real-time Processing
         F->>K: Consume from 'weather' topic
-        F->>F: Aggregate avg temp per city per minute
+        F->>F: Aggregate avg temp per city every 5 seconds
         F->>PA: Write to weather table
     and Visualization
         V->>PA: Poll for new data (every 2s)
@@ -117,7 +117,7 @@ sequenceDiagram
 | logging-server | Custom | 9998 | Flask web server that receives weather data and sends to Kafka |
 | client | Custom | - | Python HTTP client generating weather data |
 | visualization-server | Custom (Node.js) | 3000 | Real-time dashboard with Google Charts |
-| trino | trinodb/trino | 8080 | SQL query engine for Iceberg tables |
+| trino | Custom (trinodb/trino base) | 8080 | SQL query engine for Iceberg tables with automatic table initialization |
 
 ## Directory Structure
 
@@ -153,6 +153,10 @@ sequenceDiagram
 │   ├── Dockerfile               # Confluent Kafka Connect + Iceberg connector
 │   └── register-connector.sh    # Connector registration script
 └── trino/
+    ├── Dockerfile               # Custom Trino image with CLI and initialization
+    ├── docker-entrypoint.sh     # Entrypoint script that runs SQL after startup
+    ├── sql/
+    │   └── init-tables.sql      # SQL script to create Iceberg tables on startup
     └── etc/
         ├── config.properties    # Trino server config
         ├── node.properties      # Trino node config
@@ -168,7 +172,7 @@ sequenceDiagram
 The Flink job performs the following:
 1. Consumes JSON messages from Kafka `weather` topic
 2. Parses the weather data (city, temperature, ts)
-3. Aggregates average temperature per city per minute using tumbling windows
+3. Aggregates average temperature per city every 5 seconds using tumbling windows
 4. Writes results to PostgreSQL `analytics.weather` table
 
 ### PostgreSQL Analytics Schema
@@ -303,11 +307,44 @@ The weather data has the following JSON structure:
 
 ## Iceberg Table
 
+The Iceberg table is automatically created when Trino starts via the initialization script.
+
+### Table Structure
+
+- **Catalog**: iceberg
 - **Database**: default
 - **Table**: weather
-- **Partition**: ts (timestamp)
-- **Location**: s3a://warehouse/default/weather
-- **File Format**: Parquet
+- **Location**: s3a://warehouse/weather
+
+### Schema
+
+```sql
+CREATE TABLE iceberg.default.weather (
+    city VARCHAR,
+    temperature VARCHAR,
+    ts TIMESTAMP WITH TIME ZONE
+) WITH (
+    compression_codec = 'ZSTD',
+    format = 'PARQUET',
+    format_version = 2,
+    location = 's3a://warehouse/weather',
+    partitioning = ARRAY['hour(ts)']
+);
+```
+
+### Table Properties
+
+| Property | Value | Description |
+|----------|-------|-------------|
+| Format | PARQUET | File format for data storage |
+| Format Version | 2 | Iceberg format version |
+| Compression | ZSTD | Compression codec for Parquet files |
+| Partitioning | hour(ts) | Partitioned by hour of timestamp |
+| Location | s3a://warehouse/weather | Storage location in MinIO |
+
+### Initialization
+
+The table is created automatically when the Trino container starts by executing `/opt/trino/sql/init-tables.sql` via the custom entrypoint script. This ensures the table exists before Kafka Connect starts writing data.
 
 ## Configuration
 
@@ -334,8 +371,9 @@ All containers are connected via the `datapipeline` bridge network.
 This will:
 1. Build custom Docker images
 2. Start all services
-3. Wait for Kafka Connect to be ready
-4. Register the Iceberg sink connector
+3. Wait for Trino to be ready and create Iceberg tables
+4. Wait for Kafka Connect to be ready
+5. Register the Iceberg sink connector
 
 ### Test the Logging Server
 
@@ -347,7 +385,23 @@ curl "http://localhost:9998/log?city=TestCity&temperature=75.5"
 curl http://localhost:9998/health
 ```
 
-### Query Batch Data with Trino
+### Trino Table Initialization
+
+Trino automatically creates the Iceberg table on startup by executing the SQL script at `/opt/trino/sql/init-tables.sql`. The custom entrypoint script:
+
+1. Starts the Trino server
+2. Waits for Trino to be healthy (checks `/v1/info` endpoint)
+3. Executes the SQL initialization script using the Trino CLI
+4. Keeps the container running
+
+This ensures the table exists before Kafka Connect starts writing data. The table creation SQL can be modified in `trino/sql/init-tables.sql`.
+
+### Dependencies
+
+- **kafka-connect** depends on **trino** being healthy before starting
+- This ensures the Iceberg table exists before the connector attempts to write data
+
+## Query Batch Data with Trino
 
 ```bash
 docker exec -it trino trino
@@ -363,13 +417,18 @@ SHOW TABLES FROM iceberg.default;
 -- Query weather data
 SELECT * FROM iceberg.default.weather;
 
--- Query by partition
-SELECT * FROM iceberg.default.weather WHERE ts = '2026-01-08-14';
+-- Query by partition (hour-based partitioning)
+SELECT * FROM iceberg.default.weather WHERE hour(ts) = 14;
 
 -- Aggregate queries
 SELECT city, AVG(CAST(temperature AS DOUBLE)) as avg_temp 
 FROM iceberg.default.weather 
 GROUP BY city;
+
+-- Query with time range
+SELECT * FROM iceberg.default.weather 
+WHERE ts >= TIMESTAMP '2026-01-08 14:00:00' 
+  AND ts < TIMESTAMP '2026-01-08 15:00:00';
 ```
 
 ### Query Real-time Aggregated Data
