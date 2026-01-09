@@ -60,11 +60,11 @@ def log_weather():
             "message": "Missing required parameters: city and temperature"
         }), 400
     
-    # Create weather record
+    # Create weather record with second-precision timestamp
     record = {
         "city": city,
         "temperature": str(temperature),
-        "ts": datetime.now().strftime("%Y-%m-%d-%H"),
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     
     message = json.dumps(record)

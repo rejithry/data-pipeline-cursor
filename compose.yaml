@@ -154,6 +154,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      trino:
+        condition: service_healthy
     environment:
       CONNECT_BOOTSTRAP_SERVERS: kafka:29092
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
@@ -370,7 +372,9 @@ services:
   # ===================
 
   trino:
-    image: trinodb/trino:latest
+    build:
+      context: ./trino
+      dockerfile: Dockerfile
     container_name: trino
     hostname: trino
     ports:
@@ -382,6 +386,12 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./trino/etc:/etc/trino
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     networks:
       - data-pipeline
 

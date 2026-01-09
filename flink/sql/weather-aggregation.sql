@@ -3,7 +3,7 @@ CREATE TABLE weather_source (
     city STRING,
     temperature STRING,
     ts STRING,
-    event_time AS TO_TIMESTAMP(ts, 'yyyy-MM-dd-HH'),
+    event_time AS TO_TIMESTAMP(ts, 'yyyy-MM-dd HH:mm:ss'),
     WATERMARK FOR event_time AS event_time - INTERVAL '5' SECOND
 ) WITH (
     'connector' = 'kafka',

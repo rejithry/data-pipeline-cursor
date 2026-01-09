@@ -37,7 +37,7 @@ curl -X POST http://kafka-connect:8083/connectors \
         "iceberg.catalog.s3.secret-access-key": "password",
         "iceberg.catalog.s3.path-style-access": "true",
         "iceberg.catalog.client.region": "us-east-1",
-        "iceberg.table.default.weather.partition-by": "ts",
+        "iceberg.table.weather.partition_by": "hours(ts)",
         "key.converter": "org.apache.kafka.connect.storage.StringConverter",
         "value.converter": "org.apache.kafka.connect.json.JsonConverter",
         "value.converter.schemas.enable": "false"
