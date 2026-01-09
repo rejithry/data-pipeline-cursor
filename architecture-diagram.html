@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Pipeline Architecture Diagram</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+    </script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 600px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .info {
+            margin-top: 30px;
+            padding: 20px;
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            border-radius: 4px;
+        }
+        .info h3 {
+            margin-top: 0;
+            color: #2980b9;
+        }
+        .info ul {
+            line-height: 1.8;
+        }
+        .info a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        .info a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏗️ Data Pipeline Architecture</h1>
+        <p class="subtitle">Real-time Weather Data Processing Pipeline</p>
+        
+        <div class="mermaid">
+flowchart TB
+    %% Styling Definitions - Lucid Charts inspired color palette
+    classDef dataGen fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff,font-weight:bold
+    classDef messaging fill:#50C878,stroke:#2D8659,stroke-width:3px,color:#fff,font-weight:bold
+    classDef processing fill:#FF6B6B,stroke:#CC5555,stroke-width:3px,color:#fff,font-weight:bold
+    classDef storage fill:#9B59B6,stroke:#7D3C98,stroke-width:3px,color:#fff,font-weight:bold
+    classDef query fill:#F39C12,stroke:#C87F0A,stroke-width:3px,color:#fff,font-weight:bold
+    classDef viz fill:#E74C3C,stroke:#B03A2E,stroke-width:3px,color:#fff,font-weight:bold
+    classDef metadata fill:#34495E,stroke:#2C3E50,stroke-width:3px,color:#fff,font-weight:bold
+    
+    %% Data Generation Layer
+    subgraph GEN["📊 DATA GENERATION LAYER"]
+        direction TB
+        Client["Client<br/>━━━━━━━━━━━━━━<br/>Python HTTP Client<br/>Generates 10 records<br/>every 5 seconds"]
+        LoggingServer["Logging Server<br/>━━━━━━━━━━━━━━<br/>Flask API :9998<br/>Receives & forwards<br/>to Kafka"]
+    end
+    
+    %% Message Broker Layer
+    subgraph MSG["📨 MESSAGE BROKER LAYER"]
+        direction TB
+        Zookeeper["Zookeeper<br/>━━━━━━━━━━━━━━<br/>:2181<br/>Cluster Coordination"]
+        Kafka["Kafka<br/>━━━━━━━━━━━━━━<br/>:9092<br/>Message Broker<br/>Topic: weather"]
+        KafkaConnect["Kafka Connect<br/>━━━━━━━━━━━━━━<br/>:8083<br/>Iceberg Sink Connector"]
+    end
+    
+    %% Real-time Processing Layer
+    subgraph RT["⚡ REAL-TIME PROCESSING LAYER"]
+        direction TB
+        FlinkJM["Flink JobManager<br/>━━━━━━━━━━━━━━<br/>:8081<br/>Cluster Manager"]
+        FlinkTM["Flink TaskManager<br/>━━━━━━━━━━━━━━<br/>Task Executor<br/>5s Tumbling Windows"]
+        FlinkSQL["Flink SQL Client<br/>━━━━━━━━━━━━━━<br/>Job Submitter"]
+    end
+    
+    %% Storage Layer
+    subgraph STOR["💾 STORAGE LAYER"]
+        direction TB
+        MinIO["MinIO<br/>━━━━━━━━━━━━━━<br/>S3 Storage :9000<br/>s3a://warehouse/"]
+        PostgresAnalytics["PostgreSQL Analytics<br/>━━━━━━━━━━━━━━<br/>:7777<br/>Real-time Aggregations"]
+    end
+    
+    %% Metadata Storage
+    subgraph META["📋 METADATA LAYER"]
+        direction TB
+        PostgreSQL["PostgreSQL Metastore<br/>━━━━━━━━━━━━━━<br/>:5432<br/>Catalog Backend"]
+        HiveMetastore["Hive Metastore<br/>━━━━━━━━━━━━━━<br/>:9083<br/>Iceberg Catalog"]
+    end
+    
+    %% Query Layer
+    subgraph QUERY["🔍 QUERY LAYER"]
+        direction TB
+        Trino["Trino<br/>━━━━━━━━━━━━━━<br/>SQL Engine :8080<br/>Query Iceberg Tables"]
+    end
+    
+    %% Visualization Layer
+    subgraph VIZ["📈 VISUALIZATION LAYER"]
+        direction TB
+        VizServer["Visualization Server<br/>━━━━━━━━━━━━━━<br/>Node.js :3000<br/>Real-time Dashboard"]
+    end
+    
+    %% Data Flow - Generation
+    Client -->|HTTP GET<br/>/log?city=X&temp=Y| LoggingServer
+    LoggingServer -->|Produce JSON<br/>to weather topic| Kafka
+    
+    %% Message Broker Coordination
+    Zookeeper -.->|Coordinates<br/>Cluster State| Kafka
+    
+    %% Data Flow - Batch Processing
+    Kafka -->|Consume<br/>weather topic| KafkaConnect
+    KafkaConnect -->|Write Parquet<br/>Files| MinIO
+    KafkaConnect -->|Register<br/>Table Metadata| HiveMetastore
+    
+    %% Data Flow - Real-time Processing
+    Kafka -->|Consume<br/>weather topic| FlinkTM
+    FlinkJM -.->|Manages<br/>Job Execution| FlinkTM
+    FlinkSQL -.->|Submits<br/>SQL Jobs| FlinkJM
+    FlinkTM -->|Write Avg Temp<br/>every 5 seconds| PostgresAnalytics
+    
+    %% Metadata Flow
+    PostgreSQL -.->|Stores<br/>Catalog Metadata| HiveMetastore
+    
+    %% Query Flow
+    Trino -->|Query<br/>Table Schema| HiveMetastore
+    Trino -->|Read<br/>Parquet Files| MinIO
+    
+    %% Visualization Flow
+    VizServer -->|Query<br/>Aggregated Data| PostgresAnalytics
+    
+    %% Apply Styles
+    class Client,LoggingServer dataGen
+    class Zookeeper,Kafka,KafkaConnect messaging
+    class FlinkJM,FlinkTM,FlinkSQL processing
+    class MinIO,PostgresAnalytics storage
+    class PostgreSQL,HiveMetastore metadata
+    class Trino query
+    class VizServer viz
+        </div>
+        
+        <div class="info">
+            <h3>📌 How to Use This Diagram</h3>
+            <ul>
+                <li><strong>Local Viewing:</strong> Simply open this HTML file in any modern web browser</li>
+                <li><strong>Online Editors:</strong> 
+                    <a href="https://mermaid.live" target="_blank">Mermaid Live Editor</a> - 
+                    Copy the mermaid code from README.md and paste it there
+                </li>
+                <li><strong>VS Code:</strong> Install the "Markdown Preview Mermaid Support" extension</li>
+                <li><strong>GitHub/GitLab:</strong> The diagram will automatically render in README.md when pushed</li>
+                <li><strong>Export:</strong> Use Mermaid Live Editor to export as PNG, SVG, or PDF</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -6,53 +6,103 @@ A Docker Compose-based data pipeline that generates fake weather data, sends it 
 
 ```mermaid
 flowchart TB
-    subgraph producers [Data Generation Layer]
-        Client[Client<br/>Python HTTP Client]
-        LoggingServer[Logging Server<br/>Flask :9998]
+    %% Styling Definitions - Lucid Charts inspired color palette
+    classDef dataGen fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff,font-weight:bold
+    classDef messaging fill:#50C878,stroke:#2D8659,stroke-width:3px,color:#fff,font-weight:bold
+    classDef processing fill:#FF6B6B,stroke:#CC5555,stroke-width:3px,color:#fff,font-weight:bold
+    classDef storage fill:#9B59B6,stroke:#7D3C98,stroke-width:3px,color:#fff,font-weight:bold
+    classDef query fill:#F39C12,stroke:#C87F0A,stroke-width:3px,color:#fff,font-weight:bold
+    classDef viz fill:#E74C3C,stroke:#B03A2E,stroke-width:3px,color:#fff,font-weight:bold
+    classDef metadata fill:#34495E,stroke:#2C3E50,stroke-width:3px,color:#fff,font-weight:bold
+    
+    %% Data Generation Layer
+    subgraph GEN["📊 DATA GENERATION LAYER"]
+        direction TB
+        Client["Client<br/>━━━━━━━━━━━━━━<br/>Python HTTP Client<br/>Generates 10 records<br/>every 5 seconds"]
+        LoggingServer["Logging Server<br/>━━━━━━━━━━━━━━<br/>Flask API :9998<br/>Receives & forwards<br/>to Kafka"]
     end
     
-    subgraph kafka_layer [Message Broker Layer]
-        Zookeeper[Zookeeper<br/>:2181]
-        Kafka[Kafka<br/>:9092]
-        KafkaConnect[Kafka Connect<br/>:8083]
+    %% Message Broker Layer
+    subgraph MSG["📨 MESSAGE BROKER LAYER"]
+        direction TB
+        Zookeeper["Zookeeper<br/>━━━━━━━━━━━━━━<br/>:2181<br/>Cluster Coordination"]
+        Kafka["Kafka<br/>━━━━━━━━━━━━━━<br/>:9092<br/>Message Broker<br/>Topic: weather"]
+        KafkaConnect["Kafka Connect<br/>━━━━━━━━━━━━━━<br/>:8083<br/>Iceberg Sink Connector"]
     end
     
-    subgraph realtime [Real-time Processing Layer]
-        FlinkJM[Flink JobManager<br/>:8081]
-        FlinkTM[Flink TaskManager]
-        FlinkSQL[Flink SQL Client]
+    %% Real-time Processing Layer
+    subgraph RT["⚡ REAL-TIME PROCESSING LAYER"]
+        direction TB
+        FlinkJM["Flink JobManager<br/>━━━━━━━━━━━━━━<br/>:8081<br/>Cluster Manager"]
+        FlinkTM["Flink TaskManager<br/>━━━━━━━━━━━━━━<br/>Task Executor<br/>5s Tumbling Windows"]
+        FlinkSQL["Flink SQL Client<br/>━━━━━━━━━━━━━━<br/>Job Submitter"]
     end
     
-    subgraph storage [Storage Layer]
-        MinIO[MinIO S3<br/>:9000/:9001]
-        PostgreSQL[PostgreSQL Metastore<br/>:5432]
-        PostgresAnalytics[PostgreSQL Analytics<br/>:7777]
-        HiveMetastore[Hive Metastore<br/>:9083]
+    %% Storage Layer
+    subgraph STOR["💾 STORAGE LAYER"]
+        direction TB
+        MinIO["MinIO<br/>━━━━━━━━━━━━━━<br/>S3 Storage :9000<br/>s3a://warehouse/"]
+        PostgresAnalytics["PostgreSQL Analytics<br/>━━━━━━━━━━━━━━<br/>:7777<br/>Real-time Aggregations"]
     end
     
-    subgraph query [Query Layer]
-        Trino[Trino<br/>:8080]
+    %% Metadata Storage
+    subgraph META["📋 METADATA LAYER"]
+        direction TB
+        PostgreSQL["PostgreSQL Metastore<br/>━━━━━━━━━━━━━━<br/>:5432<br/>Catalog Backend"]
+        HiveMetastore["Hive Metastore<br/>━━━━━━━━━━━━━━<br/>:9083<br/>Iceberg Catalog"]
     end
     
-    subgraph visualization [Visualization Layer]
-        VizServer[Visualization Server<br/>Node.js :3000]
+    %% Query Layer
+    subgraph QUERY["🔍 QUERY LAYER"]
+        direction TB
+        Trino["Trino<br/>━━━━━━━━━━━━━━<br/>SQL Engine :8080<br/>Query Iceberg Tables"]
     end
     
-    Client -->|HTTP GET /log| LoggingServer
-    LoggingServer -->|produces JSON to<br/>weather topic| Kafka
-    Zookeeper -.->|coordinates| Kafka
-    Kafka -->|consumes from<br/>weather topic| KafkaConnect
-    Kafka -->|consumes from<br/>weather topic| FlinkTM
-    FlinkJM -.->|manages| FlinkTM
-    FlinkSQL -.->|submits jobs| FlinkJM
-        FlinkTM -->|writes avg temp<br/>every 5 seconds per city| PostgresAnalytics
-    KafkaConnect -->|writes Parquet<br/>files to warehouse bucket| MinIO
-    KafkaConnect -->|registers table<br/>metadata| HiveMetastore
-    PostgreSQL -.->|stores catalog<br/>metadata| HiveMetastore
-    Trino -->|queries table<br/>metadata| HiveMetastore
-    Trino -->|reads Parquet<br/>data files| MinIO
-    VizServer -->|queries aggregated<br/>weather data| PostgresAnalytics
+    %% Visualization Layer
+    subgraph VIZ["📈 VISUALIZATION LAYER"]
+        direction TB
+        VizServer["Visualization Server<br/>━━━━━━━━━━━━━━<br/>Node.js :3000<br/>Real-time Dashboard"]
+    end
+    
+    %% Data Flow - Generation
+    Client -->|HTTP GET<br/>/log?city=X&temp=Y| LoggingServer
+    LoggingServer -->|Produce JSON<br/>to weather topic| Kafka
+    
+    %% Message Broker Coordination
+    Zookeeper -.->|Coordinates<br/>Cluster State| Kafka
+    
+    %% Data Flow - Batch Processing
+    Kafka -->|Consume<br/>weather topic| KafkaConnect
+    KafkaConnect -->|Write Parquet<br/>Files| MinIO
+    KafkaConnect -->|Register<br/>Table Metadata| HiveMetastore
+    
+    %% Data Flow - Real-time Processing
+    Kafka -->|Consume<br/>weather topic| FlinkTM
+    FlinkJM -.->|Manages<br/>Job Execution| FlinkTM
+    FlinkSQL -.->|Submits<br/>SQL Jobs| FlinkJM
+    FlinkTM -->|Write Avg Temp<br/>every 5 seconds| PostgresAnalytics
+    
+    %% Metadata Flow
+    PostgreSQL -.->|Stores<br/>Catalog Metadata| HiveMetastore
+    
+    %% Query Flow
+    Trino -->|Query<br/>Table Schema| HiveMetastore
+    Trino -->|Read<br/>Parquet Files| MinIO
+    
+    %% Visualization Flow
+    VizServer -->|Query<br/>Aggregated Data| PostgresAnalytics
+    
+    %% Apply Styles
+    class Client,LoggingServer dataGen
+    class Zookeeper,Kafka,KafkaConnect messaging
+    class FlinkJM,FlinkTM,FlinkSQL processing
+    class MinIO,PostgresAnalytics storage
+    class PostgreSQL,HiveMetastore metadata
+    class Trino query
+    class VizServer viz
 ```
+
+> **💡 View the Diagram in Your Browser:** Open `architecture-diagram.html` in any web browser for an interactive, full-screen view of the architecture diagram.
 
 ## Data Flow
 
